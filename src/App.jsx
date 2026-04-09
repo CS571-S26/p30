@@ -277,6 +277,7 @@ const AboutPage = () => (
   </Container>
 );
 
+// TODO: change the Router to contain a base /p30 so refreshing works
 export default function App() {
   return (
     <Router>
