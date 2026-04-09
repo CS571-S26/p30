@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { Navbar, Nav, Container, Row, Col, Card, Button, Form } from 'react-bootstrap';
+import { Navbar, Nav, Container, Row, Col, Card, Button, Form, InputGroup } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import './App.css';
 
 const PrimaryNav = () => (
   <Navbar bg="dark" variant="dark" expand="lg" className="mb-4">
@@ -18,25 +19,81 @@ const PrimaryNav = () => (
   </Navbar>
 );
 
-const SearchFilters = () => (
-  <Card className="p-3 shadow-sm">
-    <h5>Refine Search</h5>
-    <Form>
-      <Form.Group className="mb-3">
-        <Form.Label>Parking Radius</Form.Label>
-        <Form.Select>
-          <option>Within 2 blocks</option>
-          <option>Within 5 blocks</option>
-        </Form.Select>
-      </Form.Group>
-      <Form.Group className="mb-3">
-        <Form.Check type="checkbox" label="Weekend Parking" />
-        <Form.Check type="checkbox" label="Free Spots Only" />
-      </Form.Group>
-      <Button variant="primary" className="w-100">Apply Filters</Button>
-    </Form>
-  </Card>
-);
+const SearchFilters = () => {
+  const [useCurrentLocation, setUseCurrentLocation] = useState(false);
+
+  return (
+    <Card className="p-3 shadow-sm border-0">
+      <h5 className="mb-3 fw-bold text-dark">Find Parking</h5>
+
+      <div
+        className="sliding-toggle-wrapper mb-4"
+        onClick={() => setUseCurrentLocation(!useCurrentLocation)}
+      >
+        <div className={`selection-pill${useCurrentLocation ? ' is-right' : ''}`} />
+
+        <div className="toggle-option">
+          <span style={{ color: !useCurrentLocation ? 'white' : '#6c757d' }}>
+            Manual
+          </span>
+        </div>
+        <div className="toggle-option">
+          <span style={{ color: useCurrentLocation ? 'white' : '#6c757d' }}>
+            Current
+          </span>
+        </div>
+      </div>
+
+      <Form>
+        {!useCurrentLocation && (
+          <Form.Group className="mb-3">
+            <Form.Label className="small fw-semibold">Street Address</Form.Label>
+            <InputGroup>
+              <Form.Control
+                placeholder="e.g. 716 Langdon St"
+                className="border-end-0"
+              />
+              <Button
+                variant="outline-secondary"
+                className="border-start-0"
+                style={{ borderColor: '#dee2e6' }}
+              >
+                Find
+              </Button>
+            </InputGroup>
+            <Form.Text className="text-muted">
+              Enter an address or intersection.
+            </Form.Text>
+          </Form.Group>
+        )}
+
+        {useCurrentLocation && (
+          <div className="mb-3 py-2 text-center text-primary small fw-medium">
+            Using your GPS location...
+          </div>
+        )}
+
+        <Form.Group className="mb-3">
+          <Form.Label className="small fw-semibold">Parking Radius</Form.Label>
+          <Form.Select>
+            <option>Within 2 blocks</option>
+            <option>Within 5 blocks</option>
+            <option>Within 10 blocks</option>
+          </Form.Select>
+        </Form.Group>
+
+        <Form.Group className="mb-3">
+          <Form.Check type="checkbox" label="Weekend Parking" className="small" />
+          <Form.Check type="checkbox" label="Free Spots Only" className="small" />
+        </Form.Group>
+
+        <Button variant="primary" className="w-100 fw-bold shadow-sm">
+          Apply Filters
+        </Button>
+      </Form>
+    </Card>
+  );
+};
 
 const ParkingSpot = ({ street, side, rules }) => (
   <Card className="mb-3">
@@ -82,6 +139,7 @@ export default function App() {
         <Container>
           <Routes>
             <Route path="/" element={<FinderPage />} />
+            <Route path="/p30" element={<FinderPage />} />
             <Route path="/about" element={<AboutPage />} />
           </Routes>
         </Container>
