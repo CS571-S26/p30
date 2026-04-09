@@ -95,16 +95,53 @@ const SearchFilters = () => {
   );
 };
 
-const ParkingSpot = ({ street, side, rules }) => (
-  <Card className="mb-3">
-    <Card.Body>
-      <Card.Title>{street}</Card.Title>
-      <Card.Subtitle className="mb-2 text-muted">{side} Side</Card.Subtitle>
-      <Card.Text>{rules}</Card.Text>
-      <Button variant="outline-success" size="sm">View Details</Button>
-    </Card.Body>
-  </Card>
-);
+const ParkingSpot = ({ street, side, rules }) => {
+  const [showModal, setShowModal] = useState(false);
+
+  return (
+    <>
+      <Card className="mb-3">
+        <Card.Body>
+          <Card.Title>{street}</Card.Title>
+          <Card.Subtitle className="mb-2 text-muted">{side} Side</Card.Subtitle>
+          <Card.Text>{rules}</Card.Text>
+          <Button variant="outline-success" size="sm" onClick={() => setShowModal(true)}>
+            View Details
+          </Button>
+        </Card.Body>
+      </Card>
+
+      {showModal && (
+        <div
+          onClick={() => setShowModal(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: '12px', padding: '1.5rem',
+              width: '360px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)'
+            }}
+          >
+            <h5 className="fw-bold mb-1">{street}</h5>
+            <p className="text-muted small mb-3">{side} Side · Street Parking</p>
+            <hr />
+            <p className="small mb-1"><strong>Hours:</strong> Mon–Fri, 8:00am – 6:00pm</p>
+            <p className="small mb-1"><strong>Limit:</strong> {rules}</p>
+            <p className="small mb-1"><strong>Permit Required:</strong> No</p>
+            <p className="small mb-3"><strong>Estimated Spots:</strong> 6–8 spaces</p>
+            <Button variant="primary" className="w-100" onClick={() => setShowModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 const FinderPage = () => (
   <Row>
