@@ -1,0 +1,42 @@
+.sliding-toggle-wrapper {
+  position: relative;
+  display: flex;
+  background-color: #f0f0f0;
+  border-radius: 50px;
+  padding: 4px;
+  height: 45px;
+  cursor: pointer;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+  user-select: none;
+}
+
+.selection-pill {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  background-color: #0d6efd;
+  border-radius: 40px;
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+.selection-pill.is-right {
+  left: 50%;
+}
+
+.toggle-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.toggle-option span {
+  transition: color 0.3s ease;
+}
