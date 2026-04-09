@@ -277,10 +277,10 @@ const AboutPage = () => (
   </Container>
 );
 
-// TODO: change the Router to contain a base /p30 so refreshing works
+// TODO: debug router
 export default function App() {
   return (
-    <Router>
+    <Router basename="/p30">
       <div className="App">
         <PrimaryNav />
         <Container>
