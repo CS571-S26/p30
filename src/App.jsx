@@ -287,7 +287,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<FinderPage />} />
             <Route path="/saved" element={<SavedPage />} />
-            <Route path="/p30" element={<FinderPage />} />
             <Route path="/about" element={<AboutPage />} />
           </Routes>
         </Container>
