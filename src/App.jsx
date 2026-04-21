@@ -1,8 +1,94 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { Navbar, Nav, Container, Row, Col, Card, Button, Form, InputGroup } from 'react-bootstrap';
+import {
+  Navbar, Nav, Container, Row, Col,
+  Card, Button, Form, InputGroup,
+  Alert, Spinner, Badge,
+} from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
+import { loadParkingSpots, findNearbySpots, findTopNSpots, geocodeAddress } from './utils/parkingData.js';
+import { RADIUS_MILES } from './utils/geo.js';
+
+const RADIUS_OPTIONS = [
+  { label: 'Within 2 blocks',   value: '2' },
+  { label: 'Within 5 blocks',   value: '5' },
+  { label: 'Within 10 blocks',  value: '10' },
+  { label: 'Nearest 10 spots',  value: 'nearest' },
+];
+
+// Returns spots that pass the active checkbox filters.
+// weekend: hide spots enforced weekdays-only (keep 24hr & weekend spots).
+// freeOnly: hide metered/paid spots.
+function applyFilters(spots, weekend, freeOnly) {
+  let result = spots;
+  if (weekend) {
+    result = result.filter(s => !/mon|tue|wed|thu|fri|weekday/i.test(s.enforced));
+  }
+  if (freeOnly) {
+    result = result.filter(s => !/meter|pay|paid|fee|charge/i.test(s.restriction));
+  }
+  return result;
+}
+
+// ── useGeolocation ────────────────────────────────────────────────────────────
+
+function useGeolocation() {
+  const [status, setStatus] = useState('idle'); // idle | requesting | granted | denied | error
+  const [coords, setCoords] = useState(null);
+  const [error, setError] = useState(null);
+
+  const request = useCallback(() => {
+    if (!navigator.geolocation) {
+      setStatus('error');
+      setError('Geolocation is not supported by this browser.');
+      return;
+    }
+    setStatus('requesting');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setStatus('granted');
+      },
+      err => {
+        setStatus('denied');
+        setError(err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }, []);
+
+  const reset = useCallback(() => {
+    setStatus('idle');
+    setCoords(null);
+    setError(null);
+  }, []);
+
+  return { status, coords, error, request, reset };
+}
+
+// ── localStorage helpers ──────────────────────────────────────────────────────
+
+function getSavedSpots() {
+  try {
+    return JSON.parse(localStorage.getItem('savedParkingSpots') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function persistSave(spot) {
+  const current = getSavedSpots();
+  if (current.find(s => s.id === spot.id)) return;
+  localStorage.setItem('savedParkingSpots', JSON.stringify([...current, spot]));
+}
+
+function persistRemove(spotId) {
+  const updated = getSavedSpots().filter(s => s.id !== spotId);
+  localStorage.setItem('savedParkingSpots', JSON.stringify(updated));
+}
+
+// ── PrimaryNav ────────────────────────────────────────────────────────────────
 
 const PrimaryNav = () => (
   <Navbar bg="dark" variant="dark" expand="lg" className="mb-4">
@@ -20,100 +106,193 @@ const PrimaryNav = () => (
   </Navbar>
 );
 
-const SearchFilters = () => {
-  const [useCurrentLocation, setUseCurrentLocation] = useState(false);
+// ── SearchFilters ─────────────────────────────────────────────────────────────
+
+const SearchFilters = ({
+  locationMode, onLocationModeChange,
+  radius, onRadiusChange,
+  geoStatus, geoError, coords,
+  onRequestLocation,
+  onSearch,         // (address: string) => void
+  geocodeStatus,    // 'idle' | 'loading' | 'error'
+  geocodeError,     // string | null
+  weekendOnly, onWeekendChange,
+  freeOnly, onFreeChange,
+}) => {
+  const [address, setAddress] = useState('');
+
+  const handleSearch = () => {
+    const trimmed = address.trim();
+    if (trimmed) onSearch(trimmed);
+  };
 
   return (
     <Card className="p-3 shadow-sm border-0">
-      <h5 className="mb-3 fw-bold text-dark">Find Parking</h5>
+      <h5 className="mb-3 fw-bold text-dark">Find ADA Parking</h5>
 
       <div
         className="sliding-toggle-wrapper mb-4"
-        onClick={() => setUseCurrentLocation(!useCurrentLocation)}
+        onClick={() => onLocationModeChange(locationMode === 'manual' ? 'current' : 'manual')}
       >
-        <div className={`selection-pill${useCurrentLocation ? ' is-right' : ''}`} />
-
+        <div className={`selection-pill${locationMode === 'current' ? ' is-right' : ''}`} />
         <div className="toggle-option">
-          <span style={{ color: !useCurrentLocation ? 'white' : '#6c757d' }}>
-            Manual
-          </span>
+          <span style={{ color: locationMode !== 'current' ? 'white' : '#6c757d' }}>Manual</span>
         </div>
-
         <div className="toggle-option">
-          <span style={{ color: useCurrentLocation ? 'white' : '#6c757d' }}>
-            Current
-          </span>
+          <span style={{ color: locationMode === 'current' ? 'white' : '#6c757d' }}>Current</span>
         </div>
       </div>
 
       <Form>
-        {!useCurrentLocation && (
+        {locationMode === 'manual' && (
           <Form.Group className="mb-3">
             <Form.Label className="small fw-semibold">Street Address</Form.Label>
             <InputGroup>
               <Form.Control
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
                 placeholder="e.g. 716 Langdon St"
                 className="border-end-0"
+                disabled={geocodeStatus === 'loading'}
               />
               <Button
                 variant="outline-secondary"
                 className="border-start-0"
                 style={{ borderColor: '#dee2e6' }}
+                onClick={handleSearch}
+                disabled={!address.trim() || geocodeStatus === 'loading'}
               >
-                Find
+                {geocodeStatus === 'loading'
+                  ? <Spinner animation="border" size="sm" />
+                  : 'Find'}
               </Button>
             </InputGroup>
-            <Form.Text className="text-muted">
-              Enter an address or intersection.
-            </Form.Text>
+            {geocodeError
+              ? <div className="text-danger small mt-1">{geocodeError}</div>
+              : <Form.Text className="text-muted">Enter an address or intersection.</Form.Text>
+            }
           </Form.Group>
         )}
 
-        {useCurrentLocation && (
-          <div className="mb-3 py-2 text-center text-primary small fw-medium">
-            Using your GPS location...
+        {locationMode === 'current' && (
+          <div className="mb-3">
+            {geoStatus === 'idle' && (
+              <Button
+                variant="outline-primary"
+                className="w-100"
+                onClick={e => { e.stopPropagation(); onRequestLocation(); }}
+              >
+                Enable GPS Location
+              </Button>
+            )}
+            {geoStatus === 'requesting' && (
+              <div className="py-2 text-center text-primary small fw-medium">
+                <Spinner animation="border" size="sm" className="me-1" />
+                Locating…
+              </div>
+            )}
+            {geoStatus === 'granted' && coords && (
+              <div className="py-2 text-center text-success small fw-medium">
+                GPS Active · {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+              </div>
+            )}
+            {(geoStatus === 'denied' || geoStatus === 'error') && (
+              <div>
+                <div className="text-danger small mb-2">{geoError || 'Location unavailable.'}</div>
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  onClick={e => { e.stopPropagation(); onRequestLocation(); }}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
         <Form.Group className="mb-3">
           <Form.Label className="small fw-semibold">Parking Radius</Form.Label>
-          <Form.Select>
-            <option>Within 2 blocks</option>
-            <option>Within 5 blocks</option>
-            <option>Within 10 blocks</option>
+          <Form.Select value={radius} onChange={e => onRadiusChange(e.target.value)}>
+            {RADIUS_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </Form.Select>
         </Form.Group>
 
         <Form.Group className="mb-3">
-          <Form.Check type="checkbox" label="Weekend Parking" className="small" />
-          <Form.Check type="checkbox" label="Free Spots Only" className="small" />
+          <Form.Check
+            type="checkbox"
+            label="Weekend Parking"
+            className="small"
+            checked={weekendOnly}
+            onChange={e => onWeekendChange(e.target.checked)}
+          />
+          <Form.Check
+            type="checkbox"
+            label="Free Spots Only"
+            className="small"
+            checked={freeOnly}
+            onChange={e => onFreeChange(e.target.checked)}
+          />
         </Form.Group>
-
-        <Button variant="primary" className="w-100 fw-bold shadow-sm">
-          Apply Filters
-        </Button>
       </Form>
     </Card>
   );
 };
 
-const ParkingSpot = ({ street, side, rules }) => {
+// ── ParkingSpot ───────────────────────────────────────────────────────────────
+
+const ParkingSpot = ({ spot }) => {
   const [showModal, setShowModal] = useState(false);
+  const [saved, setSaved] = useState(() => !!getSavedSpots().find(s => s.id === spot.id));
+
+  const handleSave = () => {
+    persistSave(spot);
+    setSaved(true);
+  };
+
+  const formatLimit = () => {
+    const hrs = parseInt(spot.timeLimitHr);
+    const mins = parseInt(spot.timeLimitMin);
+    if (hrs > 0 && mins > 0) return `${hrs}hr ${mins}min limit`;
+    if (hrs > 0) return `${hrs}-hour limit`;
+    if (mins > 0) return `${mins}-minute limit`;
+    return 'No limit listed';
+  };
 
   return (
     <>
       <Card className="mb-3">
         <Card.Body>
-          <Card.Title>{street}</Card.Title>
-          <Card.Subtitle className="mb-2 text-muted">{side} Side</Card.Subtitle>
-          <Card.Text>{rules}</Card.Text>
-          <Button
-            variant="outline-success"
-            size="sm"
-            onClick={() => setShowModal(true)}
-          >
-            View Details
-          </Button>
+          <div className="d-flex justify-content-between align-items-start">
+            <div>
+              <Card.Title className="mb-0">{spot.street}</Card.Title>
+              <Card.Subtitle className="mb-1 text-muted small">
+                {spot.side} Side · {spot.distance.toFixed(2)} mi away
+              </Card.Subtitle>
+            </div>
+            <Badge bg={spot.status === 'In service' ? 'success' : 'secondary'} className="ms-2">
+              {spot.status}
+            </Badge>
+          </div>
+          <p className="small text-muted mb-2 mt-1">
+            {formatLimit()} · {spot.enforced}
+          </p>
+          <div className="d-flex gap-2">
+            <Button variant="outline-success" size="sm" onClick={() => setShowModal(true)}>
+              View Details
+            </Button>
+            <Button
+              variant={saved ? 'success' : 'outline-primary'}
+              size="sm"
+              onClick={handleSave}
+              disabled={saved}
+            >
+              {saved ? 'Saved ✓' : 'Save'}
+            </Button>
+          </div>
         </Card.Body>
       </Card>
 
@@ -121,39 +300,44 @@ const ParkingSpot = ({ street, side, rules }) => {
         <div
           onClick={() => setShowModal(false)}
           style={{
-            position: 'fixed',
-            inset: 0,
+            position: 'fixed', inset: 0,
             background: 'rgba(0,0,0,0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1050
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1050,
           }}
         >
           <div
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
             style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '1.5rem',
-              width: '360px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.18)'
+              background: 'white', borderRadius: '12px',
+              padding: '1.5rem', width: '360px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
             }}
           >
-            <h5 className="fw-bold mb-1">{street}</h5>
-            <p className="text-muted small mb-3">{side} Side · Street Parking</p>
+            <h5 className="fw-bold mb-1">{spot.street}</h5>
+            <p className="text-muted small mb-3">{spot.side} Side · ADA On-Street Parking</p>
             <hr />
-            <p className="small mb-1"><strong>Hours:</strong> Mon–Fri, 8:00am – 6:00pm</p>
-            <p className="small mb-1"><strong>Limit:</strong> {rules}</p>
-            <p className="small mb-1"><strong>Permit Required:</strong> No</p>
-            <p className="small mb-3"><strong>Estimated Spots:</strong> 6–8 spaces</p>
-            <Button
-              variant="primary"
-              className="w-100"
-              onClick={() => setShowModal(false)}
-            >
-              Close
-            </Button>
+            <p className="small mb-1"><strong>Block:</strong> {spot.blockNbr}</p>
+            <p className="small mb-1"><strong>Enforced:</strong> {spot.enforced}</p>
+            <p className="small mb-1"><strong>Time Limit:</strong> {formatLimit()}</p>
+            <p className="small mb-1"><strong>Space Length:</strong> {spot.spaceLengthFt} ft</p>
+            {spot.restriction && (
+              <p className="small mb-1"><strong>Restriction:</strong> {spot.restriction}</p>
+            )}
+            <p className="small mb-1"><strong>Status:</strong> {spot.status}</p>
+            <p className="small mb-3"><strong>Distance:</strong> {spot.distance.toFixed(3)} mi</p>
+            <div className="d-flex gap-2">
+              <Button
+                variant={saved ? 'success' : 'primary'}
+                className="flex-grow-1"
+                onClick={() => { if (!saved) handleSave(); setShowModal(false); }}
+              >
+                {saved ? 'Saved ✓' : 'Save Spot'}
+              </Button>
+              <Button variant="outline-secondary" onClick={() => setShowModal(false)}>
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -161,123 +345,247 @@ const ParkingSpot = ({ street, side, rules }) => {
   );
 };
 
-const SavedSpotCard = ({ street, side, rules, area }) => (
-  <Card className="h-100 shadow-sm">
-    <Card.Body>
-      <Card.Title>{street}</Card.Title>
-      <Card.Subtitle className="mb-2 text-muted">{side} Side</Card.Subtitle>
-      <Card.Text>
-        <strong>Area:</strong> {area}
-      </Card.Text>
-      <Card.Text>
-        <strong>Rules:</strong> {rules}
-      </Card.Text>
-      <Button variant="outline-primary" size="sm">
-        Open Street
-      </Button>
-    </Card.Body>
-  </Card>
-);
+// ── FinderPage ────────────────────────────────────────────────────────────────
 
-const FinderPage = () => (
-  <Row>
-    <Col md={4} className="mb-4">
-      <SearchFilters />
-    </Col>
-    <Col md={8}>
-      <h3>Nearby Madison Spots</h3>
-      <ParkingSpot
-        street="W Washington Ave"
-        side="North"
-        rules="2-hour limit, 8am-6pm"
-      />
-      <ParkingSpot
-        street="N Frances St"
-        side="East"
-        rules="Weekend enforcement only"
-      />
-    </Col>
-  </Row>
-);
+const FinderPage = () => {
+  const geo = useGeolocation();
+  const [locationMode, setLocationMode] = useState('manual');
+  const [radius, setRadius] = useState('2');
+  const [allSpots, setAllSpots] = useState([]);
+  const [nearbySpots, setNearbySpots] = useState([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [dataError, setDataError] = useState(null);
 
-const savedLocations = [
-  {
-    id: 1,
-    street: 'State St',
-    side: 'North',
-    area: 'Downtown Madison',
-    rules: '2-hour parking, 8am-6pm'
-  },
-  {
-    id: 2,
-    street: 'W Johnson St',
-    side: 'South',
-    area: 'Near UW Campus',
-    rules: 'Permit parking after 5pm'
-  },
-  {
-    id: 3,
-    street: 'N Frances St',
-    side: 'East',
-    area: 'College Library Area',
-    rules: 'Weekend enforcement only'
-  },
-  {
-    id: 4,
-    street: 'Langdon St',
-    side: 'West',
-    area: 'Near Memorial Union',
-    rules: '1-hour parking, no overnight parking'
-  }
-];
+  // Unified search origin — set by either GPS or address geocoding
+  const [searchCoords, setSearchCoords] = useState(null);
+  const [searchLabel, setSearchLabel] = useState(null);
 
-const SavedPage = () => (
-  <Container className="py-4">
-    <h2 className="mb-3">Saved Parking Streets</h2>
-    <p className="text-muted">
-      These are your initial saved parking locations for now.
-    </p>
+  // Manual geocode status
+  const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | error
+  const [geocodeError, setGeocodeError] = useState(null);
 
-    <Row className="g-4 mt-1">
-      {savedLocations.map((spot) => (
-        <Col md={6} lg={4} key={spot.id}>
-          <SavedSpotCard
-            street={spot.street}
-            side={spot.side}
-            area={spot.area}
-            rules={spot.rules}
-          />
-        </Col>
-      ))}
+  // Checkbox filters
+  const [weekendOnly, setWeekendOnly] = useState(false);
+  const [freeOnly, setFreeOnly] = useState(false);
+
+  // Load CSV once on mount
+  useEffect(() => {
+    loadParkingSpots()
+      .then(spots => { setAllSpots(spots); setDataLoaded(true); })
+      .catch(() => setDataError('Failed to load parking data.'));
+  }, []);
+
+  // Auto-request GPS when switching to Current mode
+  useEffect(() => {
+    if (locationMode === 'current' && geo.status === 'idle') {
+      geo.request();
+    }
+  }, [locationMode, geo.status, geo.request]);
+
+  // Sync GPS coords into unified searchCoords
+  useEffect(() => {
+    if (locationMode === 'current' && geo.coords) {
+      setSearchCoords(geo.coords);
+      setSearchLabel(null);
+    }
+  }, [locationMode, geo.coords]);
+
+  // Re-filter whenever the search origin, radius, or checkboxes change
+  useEffect(() => {
+    if (!searchCoords || !dataLoaded) return;
+    const filtered = applyFilters(allSpots, weekendOnly, freeOnly);
+    if (radius === 'nearest') {
+      setNearbySpots(findTopNSpots(filtered, searchCoords.lat, searchCoords.lng, 10));
+    } else {
+      setNearbySpots(findNearbySpots(filtered, searchCoords.lat, searchCoords.lng, RADIUS_MILES[radius]));
+    }
+  }, [searchCoords, radius, dataLoaded, allSpots, weekendOnly, freeOnly]);
+
+  const handleModeChange = newMode => {
+    setLocationMode(newMode);
+    setSearchCoords(null);
+    setSearchLabel(null);
+    setNearbySpots([]);
+    setGeocodeStatus('idle');
+    setGeocodeError(null);
+    if (newMode === 'manual') geo.reset();
+  };
+
+  const handleManualSearch = async address => {
+    setGeocodeStatus('loading');
+    setGeocodeError(null);
+    setSearchCoords(null);
+    setNearbySpots([]);
+    try {
+      const { lat, lng, displayName } = await geocodeAddress(address);
+      setSearchCoords({ lat, lng });
+      setSearchLabel(displayName);
+      setGeocodeStatus('idle');
+    } catch (err) {
+      setGeocodeStatus('error');
+      setGeocodeError(err.message);
+    }
+  };
+
+  const radiusLabel = radius === 'nearest'
+    ? 'Nearest 10'
+    : RADIUS_OPTIONS.find(r => r.value === radius)?.label;
+
+  // True when we have results to display (both modes share the same result panel)
+  const showResults = searchCoords !== null;
+
+  return (
+    <Row>
+      <Col md={4} className="mb-4">
+        <SearchFilters
+          locationMode={locationMode}
+          onLocationModeChange={handleModeChange}
+          radius={radius}
+          onRadiusChange={setRadius}
+          geoStatus={geo.status}
+          geoError={geo.error}
+          coords={geo.coords}
+          onRequestLocation={geo.request}
+          onSearch={handleManualSearch}
+          geocodeStatus={geocodeStatus}
+          geocodeError={geocodeError}
+          weekendOnly={weekendOnly}
+          onWeekendChange={setWeekendOnly}
+          freeOnly={freeOnly}
+          onFreeChange={setFreeOnly}
+        />
+      </Col>
+
+      <Col md={8}>
+        {dataError && <Alert variant="danger">{dataError}</Alert>}
+
+        {/* ── Manual mode states ── */}
+        {locationMode === 'manual' && geocodeStatus === 'loading' && (
+          <div className="text-center py-5">
+            <Spinner animation="border" className="mb-3" />
+            <p className="text-muted">Looking up address…</p>
+          </div>
+        )}
+        {locationMode === 'manual' && geocodeStatus !== 'loading' && !showResults && (
+          <div className="text-center text-muted py-5">
+            Enter an address above to find nearby ADA parking.
+          </div>
+        )}
+
+        {/* ── Current (GPS) mode states ── */}
+        {locationMode === 'current' && geo.status === 'requesting' && (
+          <div className="text-center py-5">
+            <Spinner animation="border" className="mb-3" />
+            <p className="text-muted">Requesting your location…</p>
+          </div>
+        )}
+        {locationMode === 'current' && (geo.status === 'denied' || geo.status === 'error') && (
+          <Alert variant="warning">
+            <strong>Location unavailable.</strong> {geo.error}
+          </Alert>
+        )}
+
+        {/* ── Shared results panel ── */}
+        {showResults && (
+          <>
+            <div className="d-flex align-items-center mb-2 gap-2">
+              <h5 className="mb-0">
+                {nearbySpots.length} ADA Spot{nearbySpots.length !== 1 ? 's' : ''} Found
+              </h5>
+              <Badge bg="secondary">{radiusLabel}</Badge>
+            </div>
+            {searchLabel && (
+              <p className="text-muted small mb-3" title={searchLabel}>
+                Near: {searchLabel.split(',').slice(0, 3).join(',')}
+              </p>
+            )}
+            {nearbySpots.length === 0 ? (
+              <Alert variant="info">
+                {radius === 'nearest'
+                  ? 'No spots found after applying the active filters.'
+                  : 'No spots within this radius. Try expanding the search area or selecting "Nearest 10 spots".'}
+              </Alert>
+            ) : (
+              nearbySpots.map(spot => <ParkingSpot key={spot.id} spot={spot} />)
+            )}
+          </>
+        )}
+      </Col>
     </Row>
-  </Container>
-);
+  );
+};
+
+// ── SavedPage ─────────────────────────────────────────────────────────────────
+
+const SavedPage = () => {
+  const [savedSpots, setSavedSpots] = useState(getSavedSpots);
+
+  const handleRemove = spotId => {
+    persistRemove(spotId);
+    setSavedSpots(getSavedSpots());
+  };
+
+  return (
+    <Container className="py-4">
+      <h2 className="mb-3">Saved Parking Spots</h2>
+      {savedSpots.length === 0 ? (
+        <p className="text-muted">
+          No saved spots yet. Find ADA parking near you and tap Save.
+        </p>
+      ) : (
+        <Row className="g-4 mt-1">
+          {savedSpots.map(spot => (
+            <Col md={6} lg={4} key={spot.id}>
+              <Card className="h-100 shadow-sm">
+                <Card.Body>
+                  <Card.Title>{spot.street}</Card.Title>
+                  <Card.Subtitle className="mb-2 text-muted">{spot.side} Side</Card.Subtitle>
+                  <p className="small text-muted mb-1">
+                    {parseInt(spot.timeLimitHr) > 0 ? `${spot.timeLimitHr}hr ` : ''}
+                    {parseInt(spot.timeLimitMin) > 0 ? `${spot.timeLimitMin}min ` : ''}
+                    limit · {spot.enforced}
+                  </p>
+                  <p className="small text-muted mb-3">
+                    {spot.spaceLengthFt} ft space
+                  </p>
+                  <Button variant="outline-danger" size="sm" onClick={() => handleRemove(spot.id)}>
+                    Remove
+                  </Button>
+                </Card.Body>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      )}
+    </Container>
+  );
+};
+
+// ── AboutPage ─────────────────────────────────────────────────────────────────
 
 const AboutPage = () => (
   <Container className="py-4">
     <h2 className="mb-3">About Madison ParkWise</h2>
     <p className="text-muted">
-      Madison ParkWise is a parking finder app prototype designed to help users
-      explore street parking options in Madison.
+      Madison ParkWise helps you find ADA on-street parking in Madison, WI.
     </p>
-
     <Card className="shadow-sm border-0">
       <Card.Body>
         <Card.Title>Project Overview</Card.Title>
         <Card.Text>
-          This app lets users search for nearby parking, view saved streets, and
-          explore parking rules in a simple interface.
+          This app uses your GPS location and the City of Madison&rsquo;s ADA parking
+          dataset to show the nearest accessible spaces within your chosen radius.
         </Card.Text>
         <Card.Text>
-          It was built with React, React Router, and React Bootstrap as a student
-          web project.
+          Built with React, React Router, and React Bootstrap.
         </Card.Text>
       </Card.Body>
     </Card>
   </Container>
 );
 
-// TODO: debug router
+// ── App ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
   return (
     <Router basename="/p30">
