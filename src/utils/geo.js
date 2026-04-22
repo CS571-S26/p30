@@ -1,12 +1,12 @@
 import proj4 from 'proj4';
 
-// WISCRS Dane County (EPSG:8193) - NAD83(HARN), Transverse Mercator, US Survey Feet
-// This is the county-level CRS used by the City of Madison GIS department.
-// Central meridian: -90°37'24"W, origin: 45°42'22"N, scale: 1.0000421521
+// EPSG:8193 — NAD83(HARN) / WISCRS Dane County (ftUS)
+// Lambert Conformal Conic, tangent at 43.0695°N, CM at -89.4222°W (through Madison)
+// Source: https://epsg.io/8193
 const WI_SOUTH =
-  '+proj=tmerc +lat_0=45.70611111111111 +lon_0=-90.62333333333334 ' +
-  '+k=1.0000421521 +x_0=256946.9112573833 +y_0=0.009299999999999 ' +
-  '+ellps=GRS80 +units=us-ft +no_defs';
+  '+proj=lcc +lat_1=43.0695160375 +lat_0=43.0695160375 +lon_0=-89.4222222222222 ' +
+  '+k_0=1.0000384786 +x_0=247193.294386589 +y_0=146591.989636779 ' +
+  '+ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=us-ft +no_defs';
 
 export function convertToLatLng(x, y) {
   const [lng, lat] = proj4(WI_SOUTH, 'WGS84', [x, y]);
