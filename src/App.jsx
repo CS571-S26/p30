@@ -6,7 +6,9 @@ import {
   Alert, Spinner, Badge,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import 'leaflet/dist/leaflet.css';
 import './App.css';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { loadParkingSpots, findNearbySpots, findTopNSpots, geocodeAddress } from './utils/parkingData.js';
 import { RADIUS_MILES } from './utils/geo.js';
 
@@ -88,6 +90,20 @@ function persistRemove(spotId) {
   localStorage.setItem('savedParkingSpots', JSON.stringify(updated));
 }
 
+function formatTimeLimit(timeLimitMin) {
+  const total = parseInt(timeLimitMin);
+  if (isNaN(total) || total <= 0) return 'No limit listed';
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours > 0 && mins > 0) return `${hours}hr ${mins}min limit`;
+  if (hours > 0) return `${hours}-hour limit`;
+  return `${total}-minute limit`;
+}
+
+function readFinderSession() {
+  try { return JSON.parse(sessionStorage.getItem('pw_finder')) || {}; } catch { return {}; }
+}
+
 // ── PrimaryNav ────────────────────────────────────────────────────────────────
 
 const PrimaryNav = () => (
@@ -113,14 +129,13 @@ const SearchFilters = ({
   radius, onRadiusChange,
   geoStatus, geoError, coords,
   onRequestLocation,
-  onSearch,         // (address: string) => void
-  geocodeStatus,    // 'idle' | 'loading' | 'error'
-  geocodeError,     // string | null
+  address, onAddressChange,
+  onSearch,
+  geocodeStatus,
+  geocodeError,
   weekendOnly, onWeekendChange,
   freeOnly, onFreeChange,
 }) => {
-  const [address, setAddress] = useState('');
-
   const handleSearch = () => {
     const trimmed = address.trim();
     if (trimmed) onSearch(trimmed);
@@ -150,7 +165,7 @@ const SearchFilters = ({
             <InputGroup>
               <Form.Control
                 value={address}
-                onChange={e => setAddress(e.target.value)}
+                onChange={e => onAddressChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
                 placeholder="e.g. 716 Langdon St"
                 className="border-end-0"
@@ -242,131 +257,145 @@ const SearchFilters = ({
   );
 };
 
-// ── ParkingSpot ───────────────────────────────────────────────────────────────
+// ── Map components ────────────────────────────────────────────────────────────
 
-const ParkingSpot = ({ spot }) => {
-  const [showModal, setShowModal] = useState(false);
+const MADISON_CENTER = [43.0742, -89.3837];
+
+function MapFlyTo({ center, selectedSpot }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) map.flyTo([center.lat, center.lng], 15, { duration: 0.8 });
+  }, [center, map]);
+  useEffect(() => {
+    if (selectedSpot) map.flyTo([selectedSpot.lat, selectedSpot.lng], 18, { duration: 0.6 });
+  }, [selectedSpot, map]);
+  return null;
+}
+
+const SpotPopup = ({ spot }) => {
   const [saved, setSaved] = useState(() => !!getSavedSpots().find(s => s.id === spot.id));
-
-  const handleSave = () => {
-    persistSave(spot);
-    setSaved(true);
-  };
-
-  const formatLimit = () => {
-    const hrs = parseInt(spot.timeLimitHr);
-    const mins = parseInt(spot.timeLimitMin);
-    if (hrs > 0 && mins > 0) return `${hrs}hr ${mins}min limit`;
-    if (hrs > 0) return `${hrs}-hour limit`;
-    if (mins > 0) return `${mins}-minute limit`;
-    return 'No limit listed';
-  };
-
   return (
-    <>
-      <Card className="mb-3">
-        <Card.Body>
-          <div className="d-flex justify-content-between align-items-start">
-            <div>
-              <Card.Title className="mb-0">{spot.street}</Card.Title>
-              <Card.Subtitle className="mb-1 text-muted small">
-                {spot.side} Side · {spot.distance.toFixed(2)} mi away
-              </Card.Subtitle>
-            </div>
-            <Badge bg={spot.status === 'In service' ? 'success' : 'secondary'} className="ms-2">
-              {spot.status}
-            </Badge>
-          </div>
-          <p className="small text-muted mb-2 mt-1">
-            {formatLimit()} · {spot.enforced}
-          </p>
-          <div className="d-flex gap-2">
-            <Button variant="outline-success" size="sm" onClick={() => setShowModal(true)}>
-              View Details
-            </Button>
-            <Button
-              variant={saved ? 'success' : 'outline-primary'}
-              size="sm"
-              onClick={handleSave}
-              disabled={saved}
-            >
-              {saved ? 'Saved ✓' : 'Save'}
-            </Button>
-          </div>
-        </Card.Body>
-      </Card>
-
-      {showModal && (
-        <div
-          onClick={() => setShowModal(false)}
-          style={{
-            position: 'fixed', inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1050,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'white', borderRadius: '12px',
-              padding: '1.5rem', width: '360px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-            }}
-          >
-            <h5 className="fw-bold mb-1">{spot.street}</h5>
-            <p className="text-muted small mb-3">{spot.side} Side · ADA On-Street Parking</p>
-            <hr />
-            <p className="small mb-1"><strong>Block:</strong> {spot.blockNbr}</p>
-            <p className="small mb-1"><strong>Enforced:</strong> {spot.enforced}</p>
-            <p className="small mb-1"><strong>Time Limit:</strong> {formatLimit()}</p>
-            <p className="small mb-1"><strong>Space Length:</strong> {spot.spaceLengthFt} ft</p>
-            {spot.restriction && (
-              <p className="small mb-1"><strong>Restriction:</strong> {spot.restriction}</p>
-            )}
-            <p className="small mb-1"><strong>Status:</strong> {spot.status}</p>
-            <p className="small mb-3"><strong>Distance:</strong> {spot.distance.toFixed(3)} mi</p>
-            <div className="d-flex gap-2">
-              <Button
-                variant={saved ? 'success' : 'primary'}
-                className="flex-grow-1"
-                onClick={() => { if (!saved) handleSave(); setShowModal(false); }}
-              >
-                {saved ? 'Saved ✓' : 'Save Spot'}
-              </Button>
-              <Button variant="outline-secondary" onClick={() => setShowModal(false)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <div style={{ minWidth: '170px' }}>
+      <strong style={{ fontSize: '0.88rem' }}>{spot.street}</strong>
+      <div style={{ fontSize: '0.78rem', color: '#6c757d', marginTop: 2 }}>
+        {spot.side} Side
+        {spot.distance != null ? ` · ${spot.distance.toFixed(2)} mi away` : ''}
+      </div>
+      <hr style={{ margin: '6px 0' }} />
+      <div style={{ fontSize: '0.8rem' }}>{formatTimeLimit(spot.timeLimitMin)}</div>
+      <div style={{ fontSize: '0.8rem' }}>{spot.enforced}</div>
+      <div style={{ fontSize: '0.8rem', marginBottom: 6, color: spot.status === 'In service' ? '#198754' : '#6c757d' }}>
+        {spot.status}
+      </div>
+      <button
+        className={`btn btn-sm ${saved ? 'btn-success' : 'btn-primary'} w-100`}
+        style={{ fontSize: '0.78rem' }}
+        onClick={() => { persistSave(spot); setSaved(true); }}
+        disabled={saved}
+      >
+        {saved ? 'Saved ✓' : 'Save Spot'}
+      </button>
+    </div>
   );
 };
+
+const SpotList = ({ spots, selectedId, onSelect }) => {
+  if (!spots.length) return null;
+  return (
+    <div className="mt-3">
+      <div className="fw-semibold small text-muted mb-1 px-1">
+        {spots.length} spot{spots.length !== 1 ? 's' : ''} — click to locate on map
+      </div>
+      <div style={{ maxHeight: '38vh', overflowY: 'auto', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+        {spots.map((spot, i) => (
+          <div
+            key={spot.id}
+            onClick={() => onSelect(spot)}
+            style={{
+              cursor: 'pointer',
+              padding: '8px 12px',
+              borderBottom: i < spots.length - 1 ? '1px solid #f0f0f0' : 'none',
+              background: selectedId === spot.id ? '#fff3e0' : 'white',
+              transition: 'background 0.15s',
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{spot.street}</div>
+            <div style={{ fontSize: '0.76rem', color: '#6c757d' }}>
+              {spot.side} Side · {spot.distance.toFixed(2)} mi away
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#495057' }}>
+              {formatTimeLimit(spot.timeLimitMin)} · {spot.enforced}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ParkingMap = ({ spots, searchCoords, selectedSpot, selectedSpotId }) => (
+  <MapContainer
+    center={MADISON_CENTER}
+    zoom={13}
+    scrollWheelZoom
+    style={{ height: '68vh', minHeight: '520px', width: '100%', borderRadius: '8px' }}
+  >
+    <TileLayer
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    />
+    <MapFlyTo center={searchCoords} selectedSpot={selectedSpot} />
+    {searchCoords && (
+      <CircleMarker
+        center={[searchCoords.lat, searchCoords.lng]}
+        radius={9}
+        pathOptions={{ color: 'white', fillColor: '#2b7fff', fillOpacity: 0.9, weight: 2 }}
+      />
+    )}
+    {spots.map(spot => {
+      const isSelected = spot.id === selectedSpotId;
+      return (
+        <CircleMarker
+          key={spot.id}
+          center={[spot.lat, spot.lng]}
+          radius={isSelected ? 12 : 9}
+          pathOptions={isSelected
+            ? { color: 'white', fillColor: '#ff6d00', fillOpacity: 1, weight: 2.5 }
+            : { color: 'white', fillColor: '#e53935', fillOpacity: 1, weight: 2 }
+          }
+        >
+          <Popup>
+            <SpotPopup spot={spot} />
+          </Popup>
+        </CircleMarker>
+      );
+    })}
+  </MapContainer>
+);
 
 // ── FinderPage ────────────────────────────────────────────────────────────────
 
 const FinderPage = () => {
   const geo = useGeolocation();
-  const [locationMode, setLocationMode] = useState('manual');
-  const [radius, setRadius] = useState('2');
+  const [locationMode, setLocationMode] = useState(() => readFinderSession().locationMode ?? 'manual');
+  const [radius, setRadius] = useState(() => readFinderSession().radius ?? '2');
   const [allSpots, setAllSpots] = useState([]);
   const [nearbySpots, setNearbySpots] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [dataError, setDataError] = useState(null);
 
-  // Unified search origin — set by either GPS or address geocoding
-  const [searchCoords, setSearchCoords] = useState(null);
-  const [searchLabel, setSearchLabel] = useState(null);
+  const [searchCoords, setSearchCoords] = useState(() => readFinderSession().searchCoords ?? null);
+  const [searchLabel, setSearchLabel] = useState(() => readFinderSession().searchLabel ?? null);
 
-  // Manual geocode status
-  const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | error
+  const [geocodeStatus, setGeocodeStatus] = useState('idle');
   const [geocodeError, setGeocodeError] = useState(null);
 
-  // Checkbox filters
-  const [weekendOnly, setWeekendOnly] = useState(false);
-  const [freeOnly, setFreeOnly] = useState(false);
+  const [weekendOnly, setWeekendOnly] = useState(() => readFinderSession().weekendOnly ?? false);
+  const [freeOnly, setFreeOnly] = useState(() => readFinderSession().freeOnly ?? false);
+  const [address, setAddress] = useState(() => readFinderSession().address ?? '');
+
+  const [selectedSpotId, setSelectedSpotId] = useState(null);
+  const [selectedSpot, setSelectedSpot] = useState(null);
 
   // Load CSV once on mount
   useEffect(() => {
@@ -374,6 +403,13 @@ const FinderPage = () => {
       .then(spots => { setAllSpots(spots); setDataLoaded(true); })
       .catch(() => setDataError('Failed to load parking data.'));
   }, []);
+
+  // Persist finder query to sessionStorage so navigating away and back restores state
+  useEffect(() => {
+    sessionStorage.setItem('pw_finder', JSON.stringify({
+      locationMode, radius, searchCoords, searchLabel, weekendOnly, freeOnly, address,
+    }));
+  }, [locationMode, radius, searchCoords, searchLabel, weekendOnly, freeOnly, address]);
 
   // Auto-request GPS when switching to Current mode
   useEffect(() => {
@@ -401,6 +437,11 @@ const FinderPage = () => {
     }
   }, [searchCoords, radius, dataLoaded, allSpots, weekendOnly, freeOnly]);
 
+  const handleSpotSelect = spot => {
+    setSelectedSpotId(spot.id);
+    setSelectedSpot(spot);
+  };
+
   const handleModeChange = newMode => {
     setLocationMode(newMode);
     setSearchCoords(null);
@@ -408,6 +449,8 @@ const FinderPage = () => {
     setNearbySpots([]);
     setGeocodeStatus('idle');
     setGeocodeError(null);
+    setSelectedSpotId(null);
+    setSelectedSpot(null);
     if (newMode === 'manual') geo.reset();
   };
 
@@ -416,6 +459,8 @@ const FinderPage = () => {
     setGeocodeError(null);
     setSearchCoords(null);
     setNearbySpots([]);
+    setSelectedSpotId(null);
+    setSelectedSpot(null);
     try {
       const { lat, lng, displayName } = await geocodeAddress(address);
       setSearchCoords({ lat, lng });
@@ -446,6 +491,8 @@ const FinderPage = () => {
           geoError={geo.error}
           coords={geo.coords}
           onRequestLocation={geo.request}
+          address={address}
+          onAddressChange={setAddress}
           onSearch={handleManualSearch}
           geocodeStatus={geocodeStatus}
           geocodeError={geocodeError}
@@ -454,62 +501,56 @@ const FinderPage = () => {
           freeOnly={freeOnly}
           onFreeChange={setFreeOnly}
         />
+        <SpotList
+          spots={nearbySpots}
+          selectedId={selectedSpotId}
+          onSelect={handleSpotSelect}
+        />
       </Col>
 
       <Col md={8}>
         {dataError && <Alert variant="danger">{dataError}</Alert>}
 
-        {/* ── Manual mode states ── */}
-        {locationMode === 'manual' && geocodeStatus === 'loading' && (
-          <div className="text-center py-5">
-            <Spinner animation="border" className="mb-3" />
-            <p className="text-muted">Looking up address…</p>
-          </div>
-        )}
-        {locationMode === 'manual' && geocodeStatus !== 'loading' && !showResults && (
-          <div className="text-center text-muted py-5">
-            Enter an address above to find nearby ADA parking.
-          </div>
-        )}
-
-        {/* ── Current (GPS) mode states ── */}
-        {locationMode === 'current' && geo.status === 'requesting' && (
-          <div className="text-center py-5">
-            <Spinner animation="border" className="mb-3" />
-            <p className="text-muted">Requesting your location…</p>
+        {/* Status messages above map */}
+        {(geocodeStatus === 'loading' || (locationMode === 'current' && geo.status === 'requesting')) && (
+          <div className="d-flex align-items-center gap-2 mb-2 text-muted small">
+            <Spinner animation="border" size="sm" />
+            {geocodeStatus === 'loading' ? 'Looking up address…' : 'Requesting your location…'}
           </div>
         )}
         {locationMode === 'current' && (geo.status === 'denied' || geo.status === 'error') && (
-          <Alert variant="warning">
+          <Alert variant="warning" className="py-2 mb-2">
             <strong>Location unavailable.</strong> {geo.error}
           </Alert>
         )}
 
-        {/* ── Shared results panel ── */}
         {showResults && (
-          <>
-            <div className="d-flex align-items-center mb-2 gap-2">
-              <h5 className="mb-0">
-                {nearbySpots.length} ADA Spot{nearbySpots.length !== 1 ? 's' : ''} Found
-              </h5>
-              <Badge bg="secondary">{radiusLabel}</Badge>
-            </div>
-            {searchLabel && (
-              <p className="text-muted small mb-3" title={searchLabel}>
-                Near: {searchLabel.split(',').slice(0, 3).join(',')}
-              </p>
-            )}
-            {nearbySpots.length === 0 ? (
-              <Alert variant="info">
+          <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
+            <h5 className="mb-0">
+              {nearbySpots.length} ADA Spot{nearbySpots.length !== 1 ? 's' : ''} Found
+            </h5>
+            <Badge bg="secondary">{radiusLabel}</Badge>
+            {nearbySpots.length === 0 && (
+              <span className="text-muted small">
                 {radius === 'nearest'
-                  ? 'No spots found after applying the active filters.'
-                  : 'No spots within this radius. Try expanding the search area or selecting "Nearest 10 spots".'}
-              </Alert>
-            ) : (
-              nearbySpots.map(spot => <ParkingSpot key={spot.id} spot={spot} />)
+                  ? '— no spots match the active filters'
+                  : '— try expanding the search area'}
+              </span>
             )}
-          </>
+          </div>
         )}
+        {showResults && searchLabel && (
+          <p className="text-muted small mb-2" title={searchLabel}>
+            Near: {searchLabel.split(',').slice(0, 3).join(',')}
+          </p>
+        )}
+
+        <ParkingMap
+          spots={nearbySpots}
+          searchCoords={searchCoords}
+          selectedSpot={selectedSpot}
+          selectedSpotId={selectedSpotId}
+        />
       </Col>
     </Row>
   );
@@ -541,9 +582,7 @@ const SavedPage = () => {
                   <Card.Title>{spot.street}</Card.Title>
                   <Card.Subtitle className="mb-2 text-muted">{spot.side} Side</Card.Subtitle>
                   <p className="small text-muted mb-1">
-                    {parseInt(spot.timeLimitHr) > 0 ? `${spot.timeLimitHr}hr ` : ''}
-                    {parseInt(spot.timeLimitMin) > 0 ? `${spot.timeLimitMin}min ` : ''}
-                    limit · {spot.enforced}
+                    {formatTimeLimit(spot.timeLimitMin)} · {spot.enforced}
                   </p>
                   <p className="small text-muted mb-3">
                     {spot.spaceLengthFt} ft space
