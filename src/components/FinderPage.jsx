@@ -3,7 +3,7 @@ import { Row, Col, Alert, Spinner } from 'react-bootstrap';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { loadParkingSpots, findNearbySpots, findTopNSpots, geocodeAddress } from '../utils/parkingData.js';
 import { RADIUS_MILES } from '../utils/geo.js';
-import { readFinderSession } from '../utils/storage.js';
+import { readFinderSession, getSearchHistory, addSearchHistory } from '../utils/storage.js';
 import { RADIUS_OPTIONS } from '../constants.js';
 import SearchFilters from './SearchFilters.jsx';
 import SpotList from './SpotList.jsx';
@@ -45,6 +45,7 @@ export default function FinderPage() {
 
   const [selectedSpotId, setSelectedSpotId] = useState(null);
   const [selectedSpot, setSelectedSpot] = useState(null);
+  const [searchHistory, setSearchHistory] = useState(getSearchHistory);
 
   // Load CSV once on mount
   useEffect(() => {
@@ -115,6 +116,8 @@ export default function FinderPage() {
       setSearchCoords({ lat, lng });
       setSearchLabel(displayName);
       setGeocodeStatus('idle');
+      addSearchHistory(addr);
+      setSearchHistory(getSearchHistory());
     } catch (err) {
       setGeocodeStatus('error');
       setGeocodeError(err.message);
@@ -148,6 +151,7 @@ export default function FinderPage() {
           onWeekendChange={setWeekendOnly}
           freeOnly={freeOnly}
           onFreeChange={setFreeOnly}
+          searchHistory={searchHistory}
         />
         <SpotList
           spots={nearbySpots}

@@ -5,6 +5,9 @@ import { formatTimeLimit } from '../utils/formatting.js';
 export default function SpotPopup({ spot }) {
   const [saved, setSaved] = useState(() => !!getSavedSpots().find(s => s.id === spot.id));
 
+  const directionsUrl =
+    `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lng}`;
+
   return (
     <div style={{ minWidth: '170px' }}>
       <strong style={{ fontSize: '0.88rem' }}>{spot.street}</strong>
@@ -26,6 +29,16 @@ export default function SpotPopup({ spot }) {
       >
         {saved ? 'Saved ✓' : 'Save Spot'}
       </button>
+      <a
+        href={directionsUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="btn btn-sm btn-outline-secondary w-100 mt-1"
+        style={{ fontSize: '0.78rem' }}
+        aria-label={`Get directions to ${spot.street} in Google Maps`}
+      >
+        Get Directions ↗
+      </a>
     </div>
   );
 }
