@@ -2,11 +2,14 @@ import React from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import MapFlyTo from './MapFlyTo.jsx';
 import SpotPopup from './SpotPopup.jsx';
+import MapLegend from './MapLegend.jsx';
 
 const MADISON_CENTER = [43.0742, -89.3837];
 
 export default function ParkingMap({ spots, searchCoords, selectedSpot, selectedSpotId }) {
   return (
+    <div role="region" aria-label="Madison ADA parking map" style={{ position: 'relative' }}>
+      <MapLegend />
     <MapContainer
       center={MADISON_CENTER}
       zoom={13}
@@ -44,5 +47,6 @@ export default function ParkingMap({ spots, searchCoords, selectedSpot, selected
         );
       })}
     </MapContainer>
+    </div>
   );
 }

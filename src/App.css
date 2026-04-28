@@ -35,8 +35,19 @@
   z-index: 2;
   font-weight: 600;
   font-size: 0.9rem;
+  /* Reset button defaults */
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 40px;
 }
 
 .toggle-option span {
   transition: color 0.3s ease;
+}
+
+.toggle-option:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -3px;
 }
