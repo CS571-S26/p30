@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Container, Row, Col, Card, Button } from 'react-bootstrap';
+import { Container, Row, Col } from 'react-bootstrap';
 import { getSavedSpots, persistRemove } from '../utils/storage.js';
-import { formatTimeLimit } from '../utils/formatting.js';
+import SpotCard from './SpotCard.jsx';
+import EmptyState from './EmptyState.jsx';
 
 export default function SavedPage() {
   const [savedSpots, setSavedSpots] = useState(getSavedSpots);
@@ -13,30 +14,22 @@ export default function SavedPage() {
 
   return (
     <Container className="py-4">
-      <h2 className="mb-3">Saved Parking Spots</h2>
+      <h2 className="mb-1">Saved Parking Spots</h2>
+      <p className="text-muted small mb-4">
+        {savedSpots.length} saved spot{savedSpots.length !== 1 ? 's' : ''}
+      </p>
+
       {savedSpots.length === 0 ? (
-        <p className="text-muted">
-          No saved spots yet. Find ADA parking near you and tap Save.
-        </p>
+        <EmptyState
+          icon="🅿️"
+          title="No saved spots yet"
+          message="Find ADA parking near you and tap Save on any spot."
+        />
       ) : (
-        <Row className="g-4 mt-1">
+        <Row className="g-4">
           {savedSpots.map(spot => (
             <Col md={6} lg={4} key={spot.id}>
-              <Card className="h-100 shadow-sm">
-                <Card.Body>
-                  <Card.Title>{spot.street}</Card.Title>
-                  <Card.Subtitle className="mb-2 text-muted">{spot.side} Side</Card.Subtitle>
-                  <p className="small text-muted mb-1">
-                    {formatTimeLimit(spot.timeLimitMin)} · {spot.enforced}
-                  </p>
-                  <p className="small text-muted mb-3">
-                    {spot.spaceLengthFt} ft space
-                  </p>
-                  <Button variant="outline-danger" size="sm" onClick={() => handleRemove(spot.id)}>
-                    Remove
-                  </Button>
-                </Card.Body>
-              </Card>
+              <SpotCard spot={spot} onRemove={handleRemove} />
             </Col>
           ))}
         </Row>

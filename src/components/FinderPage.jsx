@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Alert, Spinner, Badge } from 'react-bootstrap';
+import { Row, Col, Alert, Spinner } from 'react-bootstrap';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { loadParkingSpots, findNearbySpots, findTopNSpots, geocodeAddress } from '../utils/parkingData.js';
 import { RADIUS_MILES } from '../utils/geo.js';
@@ -8,6 +8,7 @@ import { RADIUS_OPTIONS } from '../constants.js';
 import SearchFilters from './SearchFilters.jsx';
 import SpotList from './SpotList.jsx';
 import ParkingMap from './ParkingMap.jsx';
+import ResultsHeader from './ResultsHeader.jsx';
 
 // Returns spots that pass the active checkbox filters.
 // weekend: hide spots enforced weekdays-only (keep 24hr & weekend spots).
@@ -171,19 +172,13 @@ export default function FinderPage() {
         )}
 
         {showResults && (
-          <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
-            <h5 className="mb-0">
-              {nearbySpots.length} ADA Spot{nearbySpots.length !== 1 ? 's' : ''} Found
-            </h5>
-            <Badge bg="secondary">{radiusLabel}</Badge>
-            {nearbySpots.length === 0 && (
-              <span className="text-muted small">
-                {radius === 'nearest'
-                  ? '— no spots match the active filters'
-                  : '— try expanding the search area'}
-              </span>
-            )}
-          </div>
+          <ResultsHeader
+            count={nearbySpots.length}
+            radiusLabel={radiusLabel}
+            emptyHint={radius === 'nearest'
+              ? '— no spots match the active filters'
+              : '— try expanding the search area'}
+          />
         )}
         {showResults && searchLabel && (
           <p className="text-muted small mb-2" title={searchLabel}>

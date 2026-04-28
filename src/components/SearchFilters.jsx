@@ -21,19 +21,30 @@ export default function SearchFilters({
 
   return (
     <Card className="p-3 shadow-sm border-0">
-      <h5 className="mb-3 fw-bold text-dark">Find ADA Parking</h5>
+      <h2 className="mb-3 fw-bold text-dark fs-5">Find ADA Parking</h2>
 
       <div
         className="sliding-toggle-wrapper mb-4"
-        onClick={() => onLocationModeChange(locationMode === 'manual' ? 'current' : 'manual')}
+        role="group"
+        aria-label="Location input mode"
       >
-        <div className={`selection-pill${locationMode === 'current' ? ' is-right' : ''}`} />
-        <div className="toggle-option">
+        <div className={`selection-pill${locationMode === 'current' ? ' is-right' : ''}`} aria-hidden="true" />
+        <button
+          type="button"
+          className="toggle-option"
+          onClick={() => onLocationModeChange('manual')}
+          aria-pressed={locationMode === 'manual'}
+        >
           <span style={{ color: locationMode !== 'current' ? 'white' : '#6c757d' }}>Manual</span>
-        </div>
-        <div className="toggle-option">
+        </button>
+        <button
+          type="button"
+          className="toggle-option"
+          onClick={() => onLocationModeChange('current')}
+          aria-pressed={locationMode === 'current'}
+        >
           <span style={{ color: locationMode === 'current' ? 'white' : '#6c757d' }}>Current</span>
-        </div>
+        </button>
       </div>
 
       <Form>
