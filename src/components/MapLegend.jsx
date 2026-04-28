@@ -10,7 +10,13 @@ const DOT_STYLE = {
   flexShrink: 0,
 };
 
-export default function MapLegend() {
+const DEFAULT_ITEMS = [
+  { color: '#2b7fff', label: 'Your location' },
+  { color: '#e53935', label: 'ADA parking spot' },
+];
+
+export default function MapLegend({ items }) {
+  const rows = items ?? DEFAULT_ITEMS;
   return (
     <div
       aria-label="Map legend"
@@ -29,14 +35,15 @@ export default function MapLegend() {
         pointerEvents: 'none',
       }}
     >
-      <div className="d-flex align-items-center gap-2 mb-1">
-        <span style={{ ...DOT_STYLE, background: '#2b7fff' }} />
-        <span>Your location</span>
-      </div>
-      <div className="d-flex align-items-center gap-2">
-        <span style={{ ...DOT_STYLE, background: '#e53935' }} />
-        <span>ADA parking spot</span>
-      </div>
+      {rows.map(({ color, label }, i) => (
+        <div
+          key={label}
+          className={`d-flex align-items-center gap-2${i < rows.length - 1 ? ' mb-1' : ''}`}
+        >
+          <span style={{ ...DOT_STYLE, background: color }} />
+          <span>{label}</span>
+        </div>
+      ))}
     </div>
   );
 }

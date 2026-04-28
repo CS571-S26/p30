@@ -8,6 +8,7 @@ import PrimaryNav from './components/PrimaryNav.jsx';
 import FinderPage from './components/FinderPage.jsx';
 import SavedPage from './components/SavedPage.jsx';
 import AboutPage from './components/AboutPage.jsx';
+import PlanVisitPage from './components/PlanVisitPage.jsx';
 
 export default function App() {
   return (
@@ -17,12 +18,13 @@ export default function App() {
         <Container>
           <Routes>
             <Route path="/" element={<FinderPage />} />
+            <Route path="/plan" element={<PlanVisitPage />} />
             <Route path="/saved" element={<SavedPage />} />
             <Route path="/about" element={<AboutPage />} />
           </Routes>
         </Container>
         <footer className="text-center mt-5 py-3 text-muted">
-          &copy; 2024 Madison Parking Project
+          &copy; 2026 Madison Parking Project
         </footer>
       </div>
     </Router>

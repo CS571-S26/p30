@@ -14,6 +14,7 @@ export default function PrimaryNav() {
         <Navbar.Collapse id="primary-nav">
           <Nav className="me-auto">
             <Nav.Link as={Link} to="/">Finder</Nav.Link>
+            <Nav.Link as={Link} to="/plan">Plan a Visit</Nav.Link>
             <Nav.Link as={Link} to="/saved">
               Saved
               {savedCount > 0 && (
