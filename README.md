@@ -40,51 +40,6 @@ The app ingests the City of Madison's ADA parking dataset, normalizes it, and su
 
 ---
 
-## Data Flow
-
-```mermaid
-flowchart TD
-    subgraph raw["Raw Data Sources"]
-        CSV["📄 On-Street_ADA_Parking_Spaces.csv\nEPSG:8193 — Lambert Conformal Conic\npoint coordinates in US survey feet"]
-        NOM["🌐 Nominatim / OpenStreetMap\nfree geocoding, no API key"]
-        GPS["📡 navigator.geolocation\nbrowser GPS"]
-    end
-
-    subgraph utils["utils/"]
-        GEO["geo.js\nproj4 LCC → WGS84\nhaversine distance"]
-        PD["parkingData.js\nloadParkingSpots\ngeocodeAddress · findNearbySpots"]
-        ENF["enforcement.js\nparses schedule strings\ngetVisitStatus per spot"]
-        FMT["formatting.js\ntimeLimitMin → human label"]
-        STG["storage.js\nlocalStorage · sessionStorage\ncustom pw:saved-change event"]
-    end
-
-    subgraph pages["Pages"]
-        FP["FinderPage\nradius · checkboxes"]
-        PVP["PlanVisitPage\ndate · time · stay duration\nlive statusMap via useMemo"]
-        SP["SavedPage"]
-    end
-
-    CSV --> GEO --> PD
-    NOM --> PD
-    GPS --> FP
-
-    PD --> FP
-    PD --> PVP
-    ENF --> PVP
-
-    STG --> FP
-    STG --> SP
-    STG --> PVP
-
-    FP --> Map1["ParkingMap\nred dots"]
-    FP --> List1["SpotList"]
-    PVP --> Map2["VisitMap\n🟢 free · 🟡 fits · 🔴 exceeds"]
-    PVP --> List2["VisitSpotList\nsorted by status then distance"]
-    SP --> Cards["SpotCard grid"]
-```
-
----
-
 ## Component Tree
 
 ```
