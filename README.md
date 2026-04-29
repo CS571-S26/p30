@@ -88,7 +88,7 @@ App
 
 ### ADA Parking Spaces (`On-Street_ADA_Parking_Spaces.csv`)
 
-Source: [City of Madison Open Data Portal](https://data.cityofmadison.com) — *On-Street ADA Parking Spaces*
+Source: [City of Madison Open Data Portal](https://data-cityofmadison.opendata.arcgis.com/datasets/6b58c81dc07c4a62993ed541701e0e7f_1/explore?location=43.080350%2C-89.386050%2C14&showTable=true) — *On-Street ADA Parking Spaces*
 
 Point geometries stored in **EPSG:8193** (NAD83(HARN) / WISCRS Dane County, US survey feet — Lambert Conformal Conic). The proj4 string is sourced from [epsg.io/8193](https://epsg.io/8193) and applied via the `proj4` library to convert each `(X, Y)` pair to WGS84 `(lat, lng)`.
 
