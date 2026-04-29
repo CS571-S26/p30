@@ -107,9 +107,6 @@ npm run dev
 
 # Production build → docs/ (GitHub Pages ready)
 npm run build
-
-# Lint
-npm run lint
 ```
 
 ---
