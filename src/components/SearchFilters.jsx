@@ -32,6 +32,7 @@ export default function SearchFilters({
   };
 
   const historyVisible = showHistory && searchHistory && searchHistory.length > 0;
+  // this is a new comment
 
   return (
     <Card className="p-3 shadow-sm border-0">
