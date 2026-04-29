@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Alert, Spinner } from 'react-bootstrap';
 import { useGeolocation } from '../hooks/useGeolocation.js';
-import { loadParkingSpots, findNearbySpots, findTopNSpots, geocodeAddress } from '../utils/parkingData.js';
+import { loadParkingSpots, loadStreetRestrictions, findNearbySpots, findTopNSpots, geocodeAddress } from '../utils/parkingData.js';
 import { RADIUS_MILES } from '../utils/geo.js';
 import { readFinderSession, getSearchHistory, addSearchHistory } from '../utils/storage.js';
 import { RADIUS_OPTIONS } from '../constants.js';
@@ -43,23 +43,30 @@ export default function FinderPage() {
   const [freeOnly, setFreeOnly] = useState(() => readFinderSession().freeOnly ?? false);
   const [address, setAddress] = useState(() => readFinderSession().address ?? '');
 
+  const [dataset, setDataset] = useState(() => readFinderSession().dataset ?? 'ada');
+
   const [selectedSpotId, setSelectedSpotId] = useState(null);
   const [selectedSpot, setSelectedSpot] = useState(null);
   const [searchHistory, setSearchHistory] = useState(getSearchHistory);
 
-  // Load CSV once on mount
+  // Load the active dataset whenever the selection changes
   useEffect(() => {
-    loadParkingSpots()
+    setDataLoaded(false);
+    setDataError(null);
+    setAllSpots([]);
+    setNearbySpots([]);
+    const loader = dataset === 'restrictions' ? loadStreetRestrictions : loadParkingSpots;
+    loader()
       .then(spots => { setAllSpots(spots); setDataLoaded(true); })
       .catch(() => setDataError('Failed to load parking data.'));
-  }, []);
+  }, [dataset]);
 
   // Persist finder query to sessionStorage so navigating away and back restores state
   useEffect(() => {
     sessionStorage.setItem('pw_finder', JSON.stringify({
-      locationMode, radius, searchCoords, searchLabel, weekendOnly, freeOnly, address,
+      locationMode, radius, searchCoords, searchLabel, weekendOnly, freeOnly, address, dataset,
     }));
-  }, [locationMode, radius, searchCoords, searchLabel, weekendOnly, freeOnly, address]);
+  }, [locationMode, radius, searchCoords, searchLabel, weekendOnly, freeOnly, address, dataset]);
 
   // Auto-request GPS when switching to Current mode
   useEffect(() => {
@@ -76,16 +83,19 @@ export default function FinderPage() {
     }
   }, [locationMode, geo.coords]);
 
-  // Re-filter whenever the search origin, radius, or checkboxes change
+  // Re-filter whenever the search origin, radius, checkboxes, or dataset change
   useEffect(() => {
     if (!searchCoords || !dataLoaded) return;
-    const filtered = applyFilters(allSpots, weekendOnly, freeOnly);
+    // Weekend / free filters only apply to the ADA dataset
+    const filtered = dataset === 'ada'
+      ? applyFilters(allSpots, weekendOnly, freeOnly)
+      : allSpots;
     if (radius === 'nearest') {
       setNearbySpots(findTopNSpots(filtered, searchCoords.lat, searchCoords.lng, 10));
     } else {
       setNearbySpots(findNearbySpots(filtered, searchCoords.lat, searchCoords.lng, RADIUS_MILES[radius]));
     }
-  }, [searchCoords, radius, dataLoaded, allSpots, weekendOnly, freeOnly]);
+  }, [searchCoords, radius, dataLoaded, allSpots, weekendOnly, freeOnly, dataset]);
 
   const handleSpotSelect = spot => {
     setSelectedSpotId(spot.id);
@@ -152,6 +162,8 @@ export default function FinderPage() {
           freeOnly={freeOnly}
           onFreeChange={setFreeOnly}
           searchHistory={searchHistory}
+          dataset={dataset}
+          onDatasetChange={setDataset}
         />
         <SpotList
           spots={nearbySpots}

@@ -8,19 +8,58 @@ export default function SpotPopup({ spot }) {
   const directionsUrl =
     `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lng}`;
 
+  const isRestriction = spot.source === 'restrictions';
+
   return (
-    <div style={{ minWidth: '170px' }}>
+    <div style={{ minWidth: '180px' }}>
       <strong style={{ fontSize: '0.88rem' }}>{spot.street}</strong>
+
+      {/* Sub-heading: side for ADA, full restriction text for restrictions */}
       <div style={{ fontSize: '0.78rem', color: '#6c757d', marginTop: 2 }}>
-        {spot.side} Side
-        {spot.distance != null ? ` · ${spot.distance.toFixed(2)} mi away` : ''}
+        {isRestriction
+          ? spot.restrictionFull || spot.restrictionCode || ''
+          : [spot.side && `${spot.side} Side`, spot.distance != null && `${spot.distance.toFixed(2)} mi away`]
+              .filter(Boolean).join(' · ')
+        }
+        {isRestriction && spot.distance != null && (
+          <span> · {spot.distance.toFixed(2)} mi away</span>
+        )}
       </div>
+
       <hr style={{ margin: '6px 0' }} />
+
+      {/* Time limit */}
       <div style={{ fontSize: '0.8rem' }}>{formatTimeLimit(spot.timeLimitMin)}</div>
-      <div style={{ fontSize: '0.8rem' }}>{spot.enforced}</div>
-      <div style={{ fontSize: '0.8rem', marginBottom: 6, color: spot.status === 'In service' ? '#198754' : '#6c757d' }}>
-        {spot.status}
+
+      {/* Enforcement / restriction schedule */}
+      {!isRestriction && spot.enforced && (
+        <div style={{ fontSize: '0.8rem' }}>{spot.enforced}</div>
+      )}
+
+      {/* Status or restriction type */}
+      <div
+        style={{
+          fontSize: '0.8rem',
+          marginBottom: 6,
+          color: (!isRestriction && spot.status === 'In service') ? '#198754' : '#6c757d',
+        }}
+      >
+        {isRestriction
+          ? spot.status   // e.g. "2HR", "No Parking"
+          : spot.status   // e.g. "In service"
+        }
+        {isRestriction && spot.rpArea && (
+          <span style={{ marginLeft: 6 }}>· RP3 Area {spot.rpArea}</span>
+        )}
       </div>
+
+      {/* Segment length for restrictions dataset */}
+      {isRestriction && spot.segmentLengthFt && (
+        <div style={{ fontSize: '0.75rem', color: '#adb5bd', marginBottom: 6 }}>
+          Segment: ~{spot.segmentLengthFt} ft
+        </div>
+      )}
+
       <button
         className={`btn btn-sm ${saved ? 'btn-success' : 'btn-primary'} w-100`}
         style={{ fontSize: '0.78rem' }}

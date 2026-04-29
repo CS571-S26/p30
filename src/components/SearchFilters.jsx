@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Form, InputGroup, Button, Spinner } from 'react-bootstrap';
-import { RADIUS_OPTIONS } from '../constants.js';
+import { RADIUS_OPTIONS, DATASET_OPTIONS } from '../constants.js';
 
 export default function SearchFilters({
   locationMode, onLocationModeChange,
@@ -14,6 +14,7 @@ export default function SearchFilters({
   weekendOnly, onWeekendChange,
   freeOnly, onFreeChange,
   searchHistory,
+  dataset, onDatasetChange,
 }) {
   const [showHistory, setShowHistory] = useState(false);
 
@@ -32,6 +33,7 @@ export default function SearchFilters({
   };
 
   const historyVisible = showHistory && searchHistory && searchHistory.length > 0;
+  const isRestrictions = dataset === 'restrictions';
 
   return (
     <Card className="p-3 shadow-sm border-0">
@@ -195,6 +197,25 @@ export default function SearchFilters({
           </div>
         )}
 
+        {/* ── Dataset selector ───────────────────────────────────────────── */}
+        <Form.Group className="mb-3">
+          <Form.Label className="small fw-semibold">Data Source</Form.Label>
+          <Form.Select
+            value={dataset}
+            onChange={e => onDatasetChange(e.target.value)}
+            aria-label="Select parking dataset"
+          >
+            {DATASET_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </Form.Select>
+          {isRestrictions && (
+            <Form.Text className="text-muted">
+              Shows all on-street restrictions — not only ADA spaces.
+            </Form.Text>
+          )}
+        </Form.Group>
+
         <Form.Group className="mb-3">
           <Form.Label className="small fw-semibold">Parking Radius</Form.Label>
           <Form.Select value={radius} onChange={e => onRadiusChange(e.target.value)}>
@@ -211,6 +232,8 @@ export default function SearchFilters({
             className="small"
             checked={weekendOnly}
             onChange={e => onWeekendChange(e.target.checked)}
+            disabled={isRestrictions}
+            title={isRestrictions ? 'Day filtering is not available for street restrictions data' : undefined}
           />
           <Form.Check
             type="checkbox"
@@ -218,7 +241,14 @@ export default function SearchFilters({
             className="small"
             checked={freeOnly}
             onChange={e => onFreeChange(e.target.checked)}
+            disabled={isRestrictions}
+            title={isRestrictions ? 'Cost filtering is not available for street restrictions data' : undefined}
           />
+          {isRestrictions && (
+            <Form.Text className="text-muted">
+              Filters unavailable for street restrictions dataset.
+            </Form.Text>
+          )}
         </Form.Group>
       </Form>
     </Card>

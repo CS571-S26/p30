@@ -1,5 +1,7 @@
 import { convertToLatLng, haversineDistance } from './geo.js';
 
+// ─── ADA Parking Spaces (CSV) ─────────────────────────────────────────────────
+
 let cachedSpots = null;
 
 export async function loadParkingSpots() {
@@ -28,6 +30,7 @@ export async function loadParkingSpots() {
       const { lat, lng } = convertToLatLng(x, y);
       return {
         id: row.OBJECTID,
+        source: 'ada',
         lat,
         lng,
         street: [row.St_Pre_Dir, row.St_Name, row.St_Name_Suf]
@@ -48,6 +51,96 @@ export async function loadParkingSpots() {
     .filter(Boolean);
 
   return cachedSpots;
+}
+
+// ─── Street Parking Restrictions (GeoJSON) ────────────────────────────────────
+
+let cachedRestrictions = null;
+
+// Returns the midpoint coordinate of a GeoJSON LineString or MultiLineString.
+// GeoJSON coordinate order is [longitude, latitude].
+function geomMidpoint(geometry) {
+  const coords =
+    geometry.type === 'LineString'
+      ? geometry.coordinates
+      : geometry.coordinates[0]; // first ring of MultiLineString
+  const mid = coords[Math.floor(coords.length / 2)];
+  return { lat: mid[1], lng: mid[0] };
+}
+
+// Friendly label for the restriction type shown as the spot "title"
+function typeLabel(type) {
+  const MAP = {
+    '1HR': '1-Hour',
+    '2HR': '2-Hour',
+    '3HR': '3-Hour',
+    '10MIN': '10-Minute',
+    '15MIN': '15-Minute',
+    '20MIN': '20-Minute',
+    '30MIN': '30-Minute',
+    'DIS/VET': 'Disabled / Veteran',
+    'LZ': 'Loading Zone',
+    'No Parking': 'No Parking',
+    'Part Time Restriction': 'Part-Time',
+    'Peak Hour Restriction AM': 'Peak Hour AM',
+    'Peak Hour Restriction PM': 'Peak Hour PM',
+    'Peak Hour Restriction AM&PM': 'Peak Hour AM & PM',
+    'RP3 1HR': 'Resident Permit 1-Hour',
+    'RP3 2HR': 'Resident Permit 2-Hour',
+    'RPO': 'Resident Permit Only',
+  };
+  return MAP[type] ?? type ?? 'Parking Restriction';
+}
+
+export async function loadStreetRestrictions() {
+  if (cachedRestrictions) return cachedRestrictions;
+
+  const res = await fetch('/p30/data/Street_Parking_Restrictions.geojson');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const geojson = await res.json();
+
+  cachedRestrictions = geojson.features
+    .filter(f => f.geometry && f.geometry.coordinates?.length)
+    .map(f => {
+      const props = f.properties;
+      const { lat, lng } = geomMidpoint(f.geometry);
+
+      // Normalise time limit — dataset has a typo in the field name
+      const timeLimitMin =
+        props.TIme_LImit_Min != null ? String(props.TIme_LImit_Min) : null;
+      const timeLimitHr =
+        props.Time_Limit_Hr != null ? String(props.Time_Limit_Hr) : null;
+
+      return {
+        id: `r_${props.OBJECTID}`,
+        source: 'restrictions',
+        lat,
+        lng,
+        // Use the friendly type label as the display "street" — no street name in dataset
+        street: typeLabel(props.Type),
+        // Extra detail fields for the popup
+        restrictionCode: props.Restriction || '',
+        restrictionFull: props.Restr_txt_full || props.Restriction || '',
+        rpArea: props.RP3_Area,
+        segmentLengthFt: props.SHAPESTLength
+          ? Math.round(props.SHAPESTLength)
+          : null,
+        // Unified schema fields
+        side: null,
+        timeLimitHr,
+        timeLimitMin,
+        enforced: props.Restriction || '',
+        status: props.Type || '',
+        spaceLengthFt: null,
+        restriction: props.Type || '',
+        spaceName: null,
+        blockNbr: null,
+        collectRoute: null,
+      };
+    });
+
+  return cachedRestrictions;
 }
 
 export function findNearbySpots(spots, userLat, userLng, radiusMiles) {
